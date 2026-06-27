@@ -5,10 +5,10 @@ from typing import Optional
 import pandas as pd
 import joblib
 import json
-import numpy as np  # Menambahkan numpy untuk fungsi exp
 
 app = FastAPI()
 
+# Middleware agar website frontend bisa berkomunikasi dengan backend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,9 +17,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-print("[*] Memuat model dan metadata ringan...")
-# 1. Muat Model
-model = joblib.load("car_price_model_cpu.pkl")
+print("[*] Memuat model dan metadata...")
+# 1. Muat Model (Pastikan nama file sesuai dengan yang Anda simpan)
+model = joblib.load("car_price_model_cpu_optimized.pkl")
 
 # 2. Muat Metadata
 with open("metadata.json", "r") as f:
@@ -55,9 +55,10 @@ def get_options():
 
 @app.post("/api/predict")
 def predict_price(data: CarData):
+    # Ubah data dari user menjadi dictionary
     input_dict = data.dict()
     
-    # Imputasi otomatis jika user mengosongkan nilai opsional
+    # Imputasi nilai kosong dengan rata-rata/modus yang tersimpan di metadata
     for col, val in input_dict.items():
         if val is None or val == "":
             if col in means:
@@ -65,22 +66,20 @@ def predict_price(data: CarData):
             elif col in modes:
                 input_dict[col] = modes[col]
                 
-    # Model XGBoost butuh format DataFrame 1 baris
+    # Ubah ke format DataFrame agar bisa dibaca pipeline scikit-learn
     input_df = pd.DataFrame([input_dict])
     
     # PREDIKSI
-    prediction_log = model.predict(input_df)[0]
+    # Karena Anda menggunakan TransformedTargetRegressor, model secara 
+    # otomatis akan menjalankan inverse_func (np.expm1) untuk mengembalikan
+    # harga ke skala asli.
+    prediction = model.predict(input_df)[0]
     
-    # LOGIKA PENGEMBALIAN HARGA ASLI:
-    # 1. Jika model dilatih dengan log(price), gunakan np.exp()
-    # 2. Jika model dilatih dengan harga dalam jutaan (price/1e6), kalikan 1.000.000
-    # Silakan pilih salah satu baris di bawah ini sesuai teknik training Anda:
+    # Bulatkan hasil menjadi angka integer yang bersih
+    final_price = round(float(prediction), 0)
     
-    predicted_price = np.exp(prediction_log) 
-    # predicted_price = prediction_log * 1000000 
+    # Debugging di log Render
+    print(f"[*] Input Data: {input_dict}")
+    print(f"[*] Prediksi Harga: {final_price}")
     
-    print(f"[*] Input: {input_dict}")
-    print(f"[*] Hasil Prediksi (Raw): {prediction_log}")
-    print(f"[*] Hasil Prediksi (Final): {predicted_price}")
-    
-    return {"predicted_price": float(predicted_price)}
+    return {"predicted_price": final_price}
