@@ -8,7 +8,6 @@ import json
 
 app = FastAPI()
 
-# Middleware agar website frontend bisa berkomunikasi dengan backend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,23 +16,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-print("[*] Memuat model dan metadata...")
-# 1. Muat Model (Pastikan nama file sesuai dengan yang Anda simpan)
+# Load model dan metadata
 model = joblib.load("car_price_model_cpu_optimized.pkl")
-
-# 2. Muat Metadata
 with open("metadata.json", "r") as f:
     metadata = json.load(f)
-
-unique_values = metadata["unique_values"]
-means = metadata["means"]
-modes = metadata["modes"]
 
 class CarData(BaseModel):
     Brand: str
     Year: float
     Kms_Driven: float
     Horsepower: float
+    # Pastikan semua kolom input sesuai dengan yang ada di X_train saat training
     Model: Optional[str] = None
     Mileage_kmpl: Optional[float] = None
     Engine_CC: Optional[float] = None
@@ -42,44 +35,20 @@ class CarData(BaseModel):
     Owner_Type: Optional[str] = None
     Color: Optional[str] = None
     City: Optional[str] = None
-    Insurance_Valid: Optional[float] = None
-    Service_History: Optional[float] = None
-    Accidents: Optional[float] = None
-    Tax_Paid: Optional[float] = None
-    Number_of_Doors: Optional[float] = None
-    Seats: Optional[float] = None
-
-@app.get("/api/form-options")
-def get_options():
-    return unique_values
 
 @app.post("/api/predict")
 def predict_price(data: CarData):
-    # Ubah data dari user menjadi dictionary
     input_dict = data.dict()
     
-    # Imputasi nilai kosong dengan rata-rata/modus yang tersimpan di metadata
-    for col, val in input_dict.items():
-        if val is None or val == "":
-            if col in means:
-                input_dict[col] = means[col]
-            elif col in modes:
-                input_dict[col] = modes[col]
-                
-    # Ubah ke format DataFrame agar bisa dibaca pipeline scikit-learn
+    # Imputasi sederhana jika ada data kosong
+    for col in input_dict:
+        if input_dict[col] is None:
+            input_dict[col] = metadata["means"].get(col, 0)
+    
     input_df = pd.DataFrame([input_dict])
     
-    # PREDIKSI
-    # Karena Anda menggunakan TransformedTargetRegressor, model secara 
-    # otomatis akan menjalankan inverse_func (np.expm1) untuk mengembalikan
-    # harga ke skala asli.
+    # Model memprediksi dalam USD (langsung dari model)
     prediction = model.predict(input_df)[0]
     
-    # Bulatkan hasil menjadi angka integer yang bersih
-    final_price = round(float(prediction), 0)
-    
-    # Debugging di log Render
-    print(f"[*] Input Data: {input_dict}")
-    print(f"[*] Prediksi Harga: {final_price}")
-    
-    return {"predicted_price": final_price}
+    # Kirim angka mentah ke frontend
+    return {"predicted_price": float(prediction)}
