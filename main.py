@@ -5,6 +5,7 @@ from typing import Optional
 import pandas as pd
 import joblib
 import json
+import numpy as np  # Menambahkan numpy untuk fungsi exp
 
 app = FastAPI()
 
@@ -20,7 +21,7 @@ print("[*] Memuat model dan metadata ringan...")
 # 1. Muat Model
 model = joblib.load("car_price_model_cpu.pkl")
 
-# 2. Muat Metadata (Pengganti CSV)
+# 2. Muat Metadata
 with open("metadata.json", "r") as f:
     metadata = json.load(f)
 
@@ -66,6 +67,20 @@ def predict_price(data: CarData):
                 
     # Model XGBoost butuh format DataFrame 1 baris
     input_df = pd.DataFrame([input_dict])
-    prediction = model.predict(input_df)[0]
     
-    return {"predicted_price": float(prediction)}
+    # PREDIKSI
+    prediction_log = model.predict(input_df)[0]
+    
+    # LOGIKA PENGEMBALIAN HARGA ASLI:
+    # 1. Jika model dilatih dengan log(price), gunakan np.exp()
+    # 2. Jika model dilatih dengan harga dalam jutaan (price/1e6), kalikan 1.000.000
+    # Silakan pilih salah satu baris di bawah ini sesuai teknik training Anda:
+    
+    predicted_price = np.exp(prediction_log) 
+    # predicted_price = prediction_log * 1000000 
+    
+    print(f"[*] Input: {input_dict}")
+    print(f"[*] Hasil Prediksi (Raw): {prediction_log}")
+    print(f"[*] Hasil Prediksi (Final): {predicted_price}")
+    
+    return {"predicted_price": float(predicted_price)}
